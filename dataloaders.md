@@ -607,3 +607,158 @@ Updateaction      |              (PUT)            |     updateItem         |    
 Delete            |              action (DELETE)  |     removeItem         |         Item removed; list re-fetched.   |
 ------------------|-------------------------------|------------------------|------------------------------------------|
 ```
+## The "Gotcha": The Hook Rule.  
+The only thing that causes confusion is that you cannot use Redux hooks (like `useDispatch` or `useSelector`) inside a loader. Hooks only work inside React component.  
+```
+Context               |   How to access Redux                                                             |
+----------------------|--------------------------------------------------------------------------------   |
+Inside a Component    |   Use useDispatch() or useSelector()                                              |
+Inside a Loader       |   Import the store object directly and use store.dispatch() or store.getState()   |
+```
+### A sophisticated example
+The Redux slice with an action.  
+```jsx
+// features/userSlice.js
+import { createSlice } from '@reduxjs/toolkit';
+
+const userSlice = createSlice({
+  name: 'user',
+  initialState: { data: null, status: 'idle' },
+  reducers: {
+    setUser: (state, action) => {
+      state.data = action.payload;
+      state.status = 'succeeded';
+    },
+  },
+});
+
+export const { setUser } = userSlice.actions;
+export default userSlice.reducer;
+```
+You need to export the `store` itself for the loader(which is a JS function) can access it without hooks.   
+```jsx
+//store.js
+import { configureStore } from '@reduxjs/toolkit';
+import userReducer from '../features/user/userSlice';
+
+export const store = configureStore({
+  reducer: {
+    user: userReducer,
+  },
+});
+```
+Where the magic happens: 
+```jsx
+// routes/root.jsx
+import { store } from '../app/store';
+import { setUser } from '../features/user/userSlice';
+
+export const userLoader = async ({ params }) => {
+  // 1. Fetch the data
+  const response = await fetch(`/api/user/${params.id}`);
+  const userData = await response.json();
+
+  // 2. Sync with Redux: Dispatch the action directly to the store
+  store.dispatch(setUser(userData));
+
+  // 3. Return data for useLoaderData()
+  return userData;
+};
+```
+The component can then get the data from either source. Usually you use `useLoaderData` for the initial render and `useSelector` if you need data to stay reactive to global changes.  
+```jsx
+// pages/UserProfile.jsx
+import { useLoaderData } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+
+export default function UserProfile() {
+  // This is the data fresh from the loader
+  const loaderData = useLoaderData();
+  
+  // This is the same data, now living in global state
+  const reduxUser = useSelector((state) => state.user.data);
+
+  return (
+    <div>
+      <h1>{reduxUser.name}'s Profile</h1>
+      <p>Email: {loaderData.email}</p>
+    </div>
+  );
+}
+```
+loaders is only good for GET requests, this is mainly because a `loader` is triggered by a `URL change` or `revalidation`.    
+You wouldn't want loader to CREATE, UPDATE or DELETE an item, when the page refreshes, right ? That is costly and unnecessary.   
+`Actions` are the best for these scenarios with the "secret sauce" being **The Revalidation Power** i.e when an action finishes, React Router automatically **re-runs all the active loaders on the page**.    
+## Fetching a Single Piece of Data
+```jsx
+// features/petSlice.js
+import { createSlice } from '@reduxjs/toolkit';
+
+const petSlice = createSlice({
+  name: 'pets',
+  initialState: { currentPet: null },
+  reducers: {
+    setCurrentPet: (state, action) => {
+      state.currentPet = action.payload;
+    },
+  },
+});
+
+export const { setCurrentPet } = petSlice.actions;
+export default petSlice.reducer;
+```
+```jsx
+// routes/petLoader.js
+import { store } from '../app/store';
+import { setCurrentPet } from '../features/pets/petSlice';
+
+export const petDetailLoader = async ({ params }) => {
+  // params.id comes directly from the URL path defined in the router
+  const response = await fetch(`https://api.vetty.com/pets/${params.id}`);
+  
+  if (!response.ok) throw new Response("Pet Not Found", { status: 404 });
+
+  const petData = await response.json();
+
+  // Sync with Redux: Now the Navbar or other components can see this pet's info
+  store.dispatch(setCurrentPet(petData));
+
+  return petData;
+};
+```
+```jsx
+// App.js
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import PetDetail from './pages/PetDetail';
+import { petDetailLoader } from './routes/petLoader';
+
+const router = createBrowserRouter([
+  {
+    path: "/pets/:id",
+    element: <PetDetail />,
+    loader: petDetailLoader, // <--- Loader is attached here
+    errorElement: <p>Oops! Pet not found.</p>
+  }
+]);
+```
+```jsx
+// pages/PetDetail.jsx
+import { useLoaderData } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+
+export default function PetDetail() {
+  // Option A: Get data from Loader (Fresh & Local)
+  const pet = useLoaderData();
+
+  // Option B: Get data from Redux (Global)
+  const petFromStore = useSelector((state) => state.pets.currentPet);
+
+  return (
+    <div className="pet-card">
+      <h1>{pet.name}</h1>
+      <img src={pet.image} alt={pet.name} />
+      <p>{pet.description}</p>
+    </div>
+  );
+}
+```
