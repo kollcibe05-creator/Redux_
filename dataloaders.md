@@ -689,8 +689,8 @@ export default function UserProfile() {
 loaders is only good for GET requests, this is mainly because a `loader` is triggered by a `URL change` or `revalidation`.    
 You wouldn't want loader to CREATE, UPDATE or DELETE an item, when the page refreshes, right ? That is costly and unnecessary.   
 `Actions` are the best for these scenarios with the "secret sauce" being **The Revalidation Power** i.e when an action finishes, React Router automatically **re-runs all the active loaders on the page**.    
-## Fetching a Single Piece of Data
-```jsx
+## Fetching a Single Piece of Data Passed Via Params
+```jsx 
 // features/petSlice.js
 import { createSlice } from '@reduxjs/toolkit';
 
@@ -760,5 +760,30 @@ export default function PetDetail() {
       <p>{pet.description}</p>
     </div>
   );
+}
+```
+## With the Click-to-capture Logic
+When a user clicks a link, the URL changes (e.g., from `/pets` to `/pets/123`).  
+React Router detects that the URL has changed and and sees that the new route has a `:id` parameter, and automatically passes the new ID into the loader.  
+React Router does the heavy lifting of "capturing" the ID from the URL and handing it to your GET request on a silver platter.  
+```jsx
+  import {Link} from "react-router-dom" 
+  function PetList ({pets}) {
+    return (
+      {pets.map(pet => {
+        <div key={pet.id}>
+            <Link to={`/pets/${pet.id}`}View Details/>
+            <h3>{pet.name}</h3>
+
+        <div></div>
+      })}
+    )
+  } 
+```
+The loader: 
+```jsx
+export const PetDetailLoader = async ({params}) => {
+  const res = await fetch(`https://api.vetty.com/pets/${params.id}`)
+  return res.json()
 }
 ```
