@@ -708,3 +708,42 @@ const onClick = () => {
   // do more logic with this data
 }
 ```
+# `.unwrap()`
+In RTK, the `.unwrap()` method is used to `extract the raw success payload or throw a catchable error` directly from a dispatched asynchronous action.  
+By default, the lifecycle promises returned by RTK's `createAsyncThunk` and RTK Query mutations `always resolve successfully` -- even if the underlying network request failed.  
+This design prevents unhandled runtime crashes if a component ignores the promise.  
+Chaining `.unwrap()` alters this behavior so one can handle success and failure using traditional `try/catch` or `.then()/.catch()` syntax in our UI component.   
+It is usually vital where you need to perfom immediate action basing on the result of the fetch request like redirecting a user.  
+```jsx
+import { useDispatch } from 'react-redux';
+import { createUser } from './userSlice';
+
+const MyComponent = () => {
+  const dispatch = useDispatch();
+
+  const handleRegister = async (userData) => {
+    try {
+      // .unwrap() extracts the exact payload or throws the error
+      const user = await dispatch(createUser(userData)).unwrap();
+      console.log('Registration successful! User data:', user);
+      
+      // Perform local UI actions like redirecting
+      router.push('/dashboard'); 
+    } catch (error) {
+      // Handles rejected payloads or serialized errors
+      console.error('Registration failed:', error); 
+    }
+  };
+
+  return <button onClick={() => handleRegister({ name: 'Alice' })}>Register</button>;
+};
+
+```
+With promise chaining...
+```jsx
+dispatch(createUser(userData))
+  .unwrap()
+  .then((user) => console.log('Success:', user))
+  .catch((error) => console.error('Error:', error));
+
+```
